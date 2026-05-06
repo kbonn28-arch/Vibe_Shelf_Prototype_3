@@ -1,0 +1,45 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Env / secrets — never commit these
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+.cache/
+.vite/
+.next/
+.turbo/
+.parcel-cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test output
+coverage/
+.nyc_output/
+
+# Serverless / AWS
+.serverless/
+.amplify/
+amplify/team-provider-info.json
+
+# Misc
+*.log
+*.pid

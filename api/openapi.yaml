@@ -1,0 +1,394 @@
+openapi: 3.0.3
+info:
+  title: VibeShelf API
+  version: 0.1.0
+  description: |
+    REST API for the VibeShelf mood-driven book discovery app.
+    All requests / responses are JSON. The browser client must NOT talk to
+    Supabase directly — only through this API.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+# =============================================================================
+paths:
+# =============================================================================
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example: { ok: true, ts: '2025-11-04T19:00:00Z' }
+
+  /auth/signup:
+    post:
+      summary: Create user + profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, username, password]
+              properties:
+                email: { type: string, format: email }
+                username: { type: string }
+                password: { type: string, minLength: 4 }
+            example:
+              email: ada@vibeshelf.app
+              username: adareads
+              password: hunter22
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              example: { user_id: 'uuid', email: 'ada@vibeshelf.app', username: 'adareads' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: Email or username taken }
+
+  /auth/login:
+    post:
+      summary: Verify credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example: { user_id: 'uuid', email: 'ada@vibeshelf.app', username: 'adareads', bio: 'Coastal librarian.' }
+        '401': { description: Invalid credentials }
+
+  /moods:
+    get:
+      summary: List all moods
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example: { moods: [ { mood_id: 'uuid', name: 'Cosy', description: 'Warm reads' } ] }
+
+  /genres:
+    get:
+      summary: List all genres
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example: { genres: [ { genre_id: 'uuid', name: 'Fantasy' } ] }
+
+  /books:
+    get:
+      summary: List books
+      parameters:
+        - in: query
+          name: mood
+          schema: { type: string }
+        - in: query
+          name: genre
+          schema: { type: string }
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Free-text search across title and author
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  books:
+                    type: array
+                    items: { $ref: '#/components/schemas/BookFull' }
+    post:
+      summary: Create a book
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, author]
+              properties:
+                title: { type: string }
+                author: { type: string }
+                isbn: { type: string }
+                description: { type: string }
+                cover_image_url: { type: string }
+                genre_ids: { type: array, items: { type: string, format: uuid } }
+                mood_ids: { type: array, items: { type: string, format: uuid }, maxItems: 2 }
+      responses:
+        '201':
+          description: Created
+        '400': { description: missing_fields or max_2_moods exceeded }
+
+  /books/{id}:
+    get:
+      summary: Book detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookFull' }
+        '404': { description: Not found }
+
+  /shelf/{userId}:
+    get:
+      summary: List shelf entries for a user
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example:
+                entries:
+                  - entry_id: uuid
+                    user_id: uuid
+                    book_id: uuid
+                    status: currently_reading
+                    is_favorited: true
+                    personal_rating: null
+                    book: { title: 'Piranesi', author: 'Susanna Clarke' }
+
+  /shelf:
+    post:
+      summary: Add a book to a user's shelf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, book_id]
+              properties:
+                user_id: { type: string, format: uuid }
+                book_id: { type: string, format: uuid }
+                status:
+                  type: string
+                  enum: [want_to_read, currently_reading, finished, paused, dropped, re_reading]
+      responses:
+        '201':
+          description: Created
+
+  /shelf/{entryId}:
+    patch:
+      summary: Update progress / favorite / personal rating
+      parameters:
+        - in: path
+          name: entryId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [want_to_read, currently_reading, finished, paused, dropped, re_reading]
+                start_date: { type: string, format: date, nullable: true }
+                finish_date: { type: string, format: date, nullable: true }
+                is_favorited: { type: boolean }
+                personal_rating: { type: integer, minimum: 1, maximum: 5, nullable: true }
+                personal_note: { type: string, nullable: true }
+      responses:
+        '200': { description: Updated }
+        '400': { description: rating_out_of_range or no_fields }
+        '404': { description: Not found }
+    delete:
+      summary: Remove an entry from the shelf
+      parameters:
+        - in: path
+          name: entryId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+
+  /reviews/{bookId}:
+    get:
+      summary: Public reviews for a book
+      parameters:
+        - in: path
+          name: bookId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example:
+                reviews:
+                  - review_id: uuid
+                    star_rating: 5
+                    review_text: 'A quiet, generous book.'
+                    is_public: true
+                    profile: { username: 'adareads', bio: 'Coastal librarian.' }
+
+  /reviews:
+    post:
+      summary: Write a review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, book_id, star_rating]
+              properties:
+                user_id: { type: string, format: uuid }
+                book_id: { type: string, format: uuid }
+                star_rating: { type: integer, minimum: 1, maximum: 5 }
+                review_text: { type: string }
+                is_public: { type: boolean, default: true }
+      responses:
+        '201': { description: Created }
+        '400': { description: missing_fields or rating_out_of_range }
+
+  /recommend:
+    get:
+      summary: Mood-matched random recommendation
+      parameters:
+        - in: query
+          name: mood
+          required: true
+          schema: { type: string }
+        - in: query
+          name: user_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: session_id
+          schema: { type: string }
+        - in: query
+          name: exclude
+          schema: { type: string }
+          description: Comma-separated book_ids to exclude (skipped this session)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example:
+                book: { book_id: 'uuid', title: 'Piranesi', author: 'Susanna Clarke' }
+                mood: 'Reflective'
+                pool_size: 3
+        '404': { description: no_match or mood_not_found }
+
+  /recommend/log:
+    post:
+      summary: Log a recommendation outcome (skip / save / not_interested)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, book_id, mood_id, session_id, status]
+              properties:
+                user_id: { type: string, format: uuid }
+                book_id: { type: string, format: uuid }
+                mood_id: { type: string, format: uuid }
+                session_id: { type: string }
+                status:
+                  type: string
+                  enum: [shown, skipped, not_interested, saved]
+      responses:
+        '201': { description: Logged }
+
+  /profile/{userId}:
+    get:
+      summary: Get user profile
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+        '404': { description: Not found }
+    patch:
+      summary: Update user profile
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                bio: { type: string }
+                is_public: { type: boolean }
+      responses:
+        '200': { description: Updated }
+
+# =============================================================================
+components:
+# =============================================================================
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          example: { error: 'missing_fields' }
+
+  schemas:
+    BookFull:
+      type: object
+      properties:
+        book_id: { type: string, format: uuid }
+        title: { type: string }
+        author: { type: string }
+        isbn: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        cover_image_url: { type: string, nullable: true }
+        moods:
+          type: array
+          items:
+            type: object
+            properties:
+              mood_id: { type: string, format: uuid }
+              name: { type: string }
+        genres:
+          type: array
+          items:
+            type: object
+            properties:
+              genre_id: { type: string, format: uuid }
+              name: { type: string }
