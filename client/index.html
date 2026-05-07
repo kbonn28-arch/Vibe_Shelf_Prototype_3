@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>window.VIBESHELF_API_URL = 'http://localhost:3000';</script>
 <title>VibeShelf — mood-driven book discovery</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -583,6 +584,7 @@
         <button class="navlink" data-route="library">Library</button>
         <button class="navlink" data-route="recommend">Discover</button>
         <button class="navlink" data-route="profile">Profile</button>
+        <button class="navlink hidden" id="admin-nav" data-route="admin">Admin</button>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <div class="userchip"><span class="avatar" id="nav-avatar">?</span><span id="nav-username">user</span></div>
@@ -845,14 +847,15 @@ async function handleAuth() {
       const raw = await Storage.get(k);
       if (raw) { try { const u = JSON.parse(raw); if (u.username && u.username.toLowerCase() === username.toLowerCase()) return showAuthError('Username already taken.'); } catch {} }
     }
-    const newUser = {
-      user_id: uid(),
-      email,
-      username,
-      password_hash: hash(password),
-      bio: '',
-      created_at: new Date().toISOString()
-    };
+   const newUser = {
+  user_id: uid(),
+  email,
+  username,
+  password_hash: hash(password),
+  bio: '',
+  is_admin: email === 'admin@vibeshelf.app',
+  created_at: new Date().toISOString()
+};
     await saveUser(newUser);
     await afterLogin(newUser);
   } else {
@@ -878,6 +881,9 @@ async function afterLogin(user) {
   $('#app-shell').classList.remove('hidden');
   $('#nav-username').textContent = user.username;
   $('#nav-avatar').textContent = (user.username || '?').charAt(0).toUpperCase();
+  // Show admin nav if user is admin
+const adminNav = document.getElementById('admin-nav');
+if (adminNav) adminNav.classList.toggle('hidden', !user.is_admin);
   // Show mood popup (required step)
   showMoodPopup();
 }
@@ -954,6 +960,7 @@ function navigate(route) {
   else if (route === 'add') renderAddBook();
   else if (route === 'recommend') renderRecommend();
   else if (route === 'profile') renderProfile();
+  else if (route === 'admin') renderAdmin();
   else if (route.startsWith('book:')) renderBookDetail(route.slice(5));
   window.scrollTo(0, 0);
 }
@@ -1637,7 +1644,29 @@ function showEditProfile() {
     renderProfile();
   };
 }
-
+/* ============== ADMIN ============== */
+async function renderAdmin() {
+  if (!state.currentUser?.is_admin) {
+    $('#page').innerHTML = `<div class="empty"><h3>Forbidden</h3><p>This page is admin-only.</p></div>`;
+    return;
+  }
+  $('#page').innerHTML = `<h1 style="font-size:36px;margin:0 0 18px;color:var(--green-900);font-weight:600">Admin Dashboard</h1><p style="color:var(--ink-mute);margin-bottom:24px">Aggregate stats across the entire VibeShelf community.</p><div id="admin-stats" class="profile-stats">Loading...</div>`;
+  if (!USE_API) {
+    $('#admin-stats').innerHTML = `<div class="stat"><div class="num">${state.bookshelf.length}</div><div class="l">Your Shelf</div></div><div class="stat"><div class="num">${state.reviews.length}</div><div class="l">All Reviews</div></div><div class="stat"><div class="num">${state.catalog.length}</div><div class="l">Catalog</div></div>`;
+    return;
+  }
+  try {
+    const stats = await Api._req('GET', '/admin/stats/' + state.currentUser.user_id);
+    $('#admin-stats').innerHTML = `
+      <div class="stat"><div class="num">${stats.users}</div><div class="l">Total Users</div></div>
+      <div class="stat"><div class="num">${stats.books}</div><div class="l">Books in Catalog</div></div>
+      <div class="stat"><div class="num">${stats.shelf_entries}</div><div class="l">Total Shelf Entries</div></div>
+      <div class="stat"><div class="num">${stats.reviews}</div><div class="l">Total Reviews</div></div>
+    `;
+  } catch (err) {
+    $('#admin-stats').innerHTML = `<div class="empty"><p>Failed to load stats: ${err.message}</p></div>`;
+  }
+}
 /* ============== FAB ============== */
 function attachFab() {
   if (document.getElementById('fab')) return;

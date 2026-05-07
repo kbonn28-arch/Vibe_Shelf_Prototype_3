@@ -34,7 +34,29 @@ const wrap = fn => (req, res) => fn(req, res).catch(err => {
   console.error(err);
   fail(res, 500, 'internal_error', err.message);
 });
+// =============================================================================
+// ADMIN — aggregate stats (role-gated)
+// =============================================================================
+app.get('/admin/stats/:userId', wrap(async (req, res) => {
+  const { userId } = req.params;
+  // verify caller is admin
+  const { data: user } = await supa.from('app_user').select('is_admin').eq('user_id', userId).maybeSingle();
+  if (!user || !user.is_admin) return fail(res, 403, 'forbidden');
 
+  const [users, books, entries, reviews] = await Promise.all([
+    supa.from('app_user').select('user_id', { count: 'exact', head: true }),
+    supa.from('book').select('book_id', { count: 'exact', head: true }),
+    supa.from('bookshelf_entry').select('entry_id', { count: 'exact', head: true }),
+    supa.from('review').select('review_id', { count: 'exact', head: true })
+  ]);
+
+  res.json({
+    users: users.count || 0,
+    books: books.count || 0,
+    shelf_entries: entries.count || 0,
+    reviews: reviews.count || 0
+  });
+}));
 // =============================================================================
 // HEALTH
 // =============================================================================
@@ -83,8 +105,7 @@ app.post('/auth/login', wrap(async (req, res) => {
 
   const { data: prof } = await supa.from('profile').select('username, bio').eq('user_id', user.user_id).maybeSingle();
   await supa.from('app_user').update({ last_login_at: new Date().toISOString() }).eq('user_id', user.user_id);
-
-  res.json({ user_id: user.user_id, email: user.email, username: prof?.username, bio: prof?.bio });
+res.json({ user_id: user.user_id, email: user.email, username: prof?.username, bio: prof?.bio, is_admin: user.is_admin || false });
 }));
 
 // =============================================================================
