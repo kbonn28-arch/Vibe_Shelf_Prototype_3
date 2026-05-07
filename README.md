@@ -123,3 +123,4 @@ Suggested demo flow:
 - **No password reset flow** — out of scope for the prototype.
 - **Genre is single-select** in Add form (schema supports many-to-many; future upgrade).
 - **RLS policies** in `db/03_policies.sql` are not exercised because the API uses the service-role key. They become relevant once the client moves to direct anon-key access.
+# Vibe_Shelf_Prototype_3
